@@ -3,6 +3,8 @@ from uuid import uuid4
 
 import sqlite3
 
+from app.services.brand_profiles import create_initial_brand_profile
+
 class _Unset:
     """Representa um campo que não foi informado."""
 
@@ -62,6 +64,11 @@ def create_brand(
             now,
             now,
         ),
+    )
+
+    create_initial_brand_profile(
+        connection,
+        brand_id,
     )
 
     return brand_id
