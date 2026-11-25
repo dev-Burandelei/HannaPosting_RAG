@@ -35,31 +35,6 @@ EXPECTED_TABLES = {
     "audit_logs",
 }
 
-
-@pytest.fixture
-def database(tmp_path):
-    """Cria um banco temporário e executa o DDL."""
-
-    if not SCHEMA_FILE.exists():
-        pytest.fail(f"Arquivo SQL não encontrado: {SCHEMA_FILE}")
-
-    # Lê o DDL como UTF-8
-    schema_sql = SCHEMA_FILE.read_text(encoding="utf-8-sig")
-
-    # Cria banco temporário
-    db_path = tmp_path / "test_database.db"
-    connection = sqlite3.connect(db_path)
-
-    try:
-        # Executa as instruções SQL
-        connection.executescript(schema_sql)
-
-        yield connection
-
-    finally:
-        connection.close()
-
-
 def test_schema_creation(database):
     """Verifica se todas as tabelas esperadas foram criadas."""
 

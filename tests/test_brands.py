@@ -1,4 +1,10 @@
+import json
+
 import pytest
+
+import sqlite3
+
+from app.services.brand_profiles import build_empty_profile_snapshot
 
 from app.services.brands import (
     create_brand,
@@ -894,3 +900,89 @@ def test_set_default_brand_preserves_previous_default_when_target_is_inactive(da
 
     assert result is None
     assert first_brand["is_default"] == 1
+
+def test_create_brand_creates_initial_profile_and_version(database):
+    create_environment(database)
+
+    brand_id = create_brand(
+        database,
+        environment_id="env-001",
+        name="Marca de teste",
+    )
+
+    profile = database.execute(
+        """
+        SELECT id, brand_id
+        FROM brand_profiles
+        WHERE brand_id = ?
+        """,
+        (brand_id,),
+    ).fetchone()
+
+    assert profile is not None
+    assert profile[1] == brand_id
+
+    versions = database.execute(
+        """
+        SELECT
+            version_number,
+            profile_data_json,
+            created_by
+        FROM brand_profile_versions
+        WHERE brand_id = ?
+          AND brand_profile_id = ?
+        """,
+        (brand_id, profile[0]),
+    ).fetchall()
+
+    assert len(versions) == 1
+    assert versions[0][0] == 1
+    assert json.loads(versions[0][1]) == build_empty_profile_snapshot()
+    assert versions[0][2] is None
+
+
+def test_create_brand_can_be_rolled_back_when_initial_profile_creation_fails(database):
+    create_environment(database)
+
+    database.execute(
+        """
+        CREATE TRIGGER fail_initial_profile_version
+        BEFORE INSERT ON brand_profile_versions
+        BEGIN
+            SELECT RAISE(ABORT, 'Falha simulada na versão inicial');
+        END;
+        """
+    )
+
+    with pytest.raises(
+        sqlite3.IntegrityError,
+        match="Falha simulada na versão inicial",
+    ):
+        try:
+            create_brand(
+                database,
+                environment_id="env-001",
+                name="Marca de teste",
+            )
+        except Exception:
+            database.rollback()
+            raise
+
+    brand_count = database.execute(
+        "SELECT COUNT(*) FROM brands WHERE name = ?",
+        ("Marca de teste",),
+    ).fetchone()[0]
+
+    profile_count = database.execute(
+        """
+        SELECT COUNT(*)
+        FROM brand_profiles
+        WHERE brand_id IN (
+            SELECT id FROM brands WHERE name = ?
+        )
+        """,
+        ("Marca de teste",),
+    ).fetchone()[0]
+
+    assert brand_count == 0
+    assert profile_count == 0
